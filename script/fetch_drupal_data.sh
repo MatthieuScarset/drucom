@@ -69,7 +69,7 @@ case "$1" in
             organizations: ([.field_organizations[]?.id | tostring] // [] | join(",") | split(",")),
             industries: (.field_industries // null),
             contributions: (.field_contributed // null),
-            events: (.field_events_attended // null),
+            events: (.field_events_attended // null)
         }'
         ;;
     organization)
@@ -81,7 +81,7 @@ case "$1" in
             author: (.author.id // null),
             url: (.field_link.url // null),
             budget: (.field_budget // null),
-            headquarters: (.field_organization_headquarters // null),
+            headquarters: (.field_organization_headquarters // null)
         }'
         ;;
     event)
@@ -99,7 +99,7 @@ case "$1" in
             volunteers: (.field_event_volunteers // [] | map(.id | tostring)),
             organizers: (.field_organizers // [] | map(.id | tostring)),
             city: (if (.field_event_address | type == "object") then .field_event_address.locality else null end),
-            country: (if (.field_event_address | type == "object") then .field_event_address.country else null end),
+            country: (if (.field_event_address | type == "object") then .field_event_address.country else null end)
         }'
         ;;
     *)
