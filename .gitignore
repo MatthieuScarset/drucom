@@ -1,3 +1,78 @@
+# Byte-compiled / optimized / compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environment directories
+env/
+venv/
+.venv/
+
+# Python environment files
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+
+# VS Code settings
+.vscode/
+
+# Data files
 data/
-__*/
-.ipynb*/
+*.csv
+*.tsv
+*.json
+*.parquet
+*.h5
+*.db
+*.sqlite
+*.feather
+
+# Logs and temporary files
+*.log
+*.out
+*.err
+*.tmp
+*.bak
+*.swp
+*.swo
+*.DS_Store
+
+# Bash script artifacts
+*.sh~
+*.swp
+
+# Jupyter Notebook metadata
+*.nbconvert/
+*.nb.html
+
+# Machine learning model files
+*.pkl
+*.joblib
+*.h5
+*.onnx
+*.model
+
+# Results and outputs
+results/
+output/
+plots/
+figures/
+
+# Ignore large files or temporary analysis files
+*.gz
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+# Ignore IDE-specific files
+.idea/
+*.iml
+
+# Ignore system files
+Thumbs.db
+.DS_Store
