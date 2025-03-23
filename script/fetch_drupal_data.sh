@@ -26,12 +26,14 @@ fetch_data() {
     local TOTAL_PAGES=$(echo "$LAST_PAGE_URL" | grep -oP 'page=\K\d+')
 
     echo "Fetching data for $RESOURCE in parallel..."
-    local PROGRESS=0
-    export MAPPING # Export the mapping so it can be accessed by the subshell
     seq 0 $TOTAL_PAGES | xargs -P 50 -I {} bash -c \
-        "curl -s '${BASE_URL}/${RESOURCE}?${PARAMETERS}&page={}' | \
-        jq -c '.list[] | ${MAPPING}' > '$TEMP_FOLDER/page_{}.json'; \
-        echo -ne \"Progress: \$((++PROGRESS))/$((TOTAL_PAGES + 1)) pages fetched...\r\""
+        "if [ ! -f '$TEMP_FOLDER/page_{}.json' ]; then \
+            curl -s '${BASE_URL}/${RESOURCE}?${PARAMETERS}&page={}' | \
+            jq -c '.list[] | ${MAPPING}' > '$TEMP_FOLDER/page_{}.json'; \
+        fi; \
+        if (( {} % 50 == 0 )); then \
+            echo -ne \"Progress: \$(ls -l $TEMP_FOLDER/*.json 2>/dev/null | wc -l)/$((TOTAL_PAGES + 1)) pages fetched...\r\"; \
+        fi"
 
     echo -e "\nFetching complete."
 
