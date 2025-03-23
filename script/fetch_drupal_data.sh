@@ -26,14 +26,10 @@ fetch_data() {
     local TOTAL_PAGES=$(echo "$LAST_PAGE_URL" | grep -oP 'page=\K\d+')
 
     echo "Fetching data for $RESOURCE in parallel..."
-    seq 0 $TOTAL_PAGES | xargs -P 100 -I {} bash -c \
-        "if [ ! -f '$TEMP_FOLDER/page_{}.json' ]; then \
-            curl -s '${BASE_URL}/${RESOURCE}?${PARAMETERS}&page={}' | \
-            jq -c '.list[] | ${MAPPING}' > '$TEMP_FOLDER/page_{}.json'; \
-        fi; \
-        if (( {} % 50 == 0 )); then \
-            echo -ne \"Progress: \$(ls -l $TEMP_FOLDER/*.json 2>/dev/null | wc -l)/$((TOTAL_PAGES + 1)) pages fetched...\r\"; \
-        fi"
+    seq 0 $TOTAL_PAGES | parallel -j 100 --halt-on-error now,fail=1 \
+        "curl -s '${BASE_URL}/${RESOURCE}?${PARAMETERS}&page={}' | \
+        jq -c '.list[] | ${MAPPING}' > '$TEMP_FOLDER/page_{}.json' && \
+        echo -ne \"Progress: \$(ls -l $TEMP_FOLDER | wc -l)/$((TOTAL_PAGES + 1)) pages fetched...\r\""
 
     echo -e "\nFetching complete."
 
@@ -43,7 +39,7 @@ fetch_data() {
     echo "]" >> "$OUTPUT_FILE"
 
     # Clean up temporary files
-    # rm -rf "$TEMP_FOLDER"
+    rm -rf "$TEMP_FOLDER"
 
     # Validate JSON
     if ! jq -e . "$OUTPUT_FILE" > /dev/null 2>&1; then
@@ -90,7 +86,6 @@ case "$1" in
         }'
         ;;
     *)
-        echo "Usage: $0 {user|organization}"
+        echo "Usage: $0 {user|organization}"  exit 1
         exit 1
-        ;;
-esac
+        ;;esac
