@@ -26,7 +26,7 @@ fetch_data() {
     local TOTAL_PAGES=$(echo "$LAST_PAGE_URL" | grep -oP 'page=\K\d+')
 
     echo "Fetching data for $RESOURCE in parallel..."
-    seq 0 $TOTAL_PAGES | xargs -P 50 -I {} bash -c \
+    seq 0 $TOTAL_PAGES | xargs -P 100 -I {} bash -c \
         "if [ ! -f '$TEMP_FOLDER/page_{}.json' ]; then \
             curl -s '${BASE_URL}/${RESOURCE}?${PARAMETERS}&page={}' | \
             jq -c '.list[] | ${MAPPING}' > '$TEMP_FOLDER/page_{}.json'; \
@@ -43,7 +43,7 @@ fetch_data() {
     echo "]" >> "$OUTPUT_FILE"
 
     # Clean up temporary files
-    rm -rf "$TEMP_FOLDER"
+    # rm -rf "$TEMP_FOLDER"
 
     # Validate JSON
     if ! jq -e . "$OUTPUT_FILE" > /dev/null 2>&1; then
@@ -59,14 +59,22 @@ case "$1" in
         fetch_data "user" "user.json" "sort=uid&direction=ASC" '{
             id: .uid,
             title: .name,
+            fname: .field_first_name,
+            lname: .field_last_name,
             created: .created,
-            da_membership: (if .field_da_ind_membership == [] then null else .field_da_ind_membership end),
-            timezone: (if .timezone == "" then null else .timezone end),
+            da_membership: .field_da_ind_membership,
             slack: (if .field_slack == [] then null else .field_slack end),
-            mentors: (if .field_mentors == [] then null else .field_mentors end),
+            mentors: ([.field_mentors[].id | tostring] | join(",") | split(",")),
             countries: (if .field_country == [] then null else .field_country end),
+            language: .field_user_primary_language,
             languages: (if .field_languages == [] then null else .field_languages end),
-            organizations: (if .field_organizations == [] then null else .field_organizations end)
+            timezone: .timezone,
+            region: (if .timezone | length > 0 then (.timezone | tostring | split("/") | first) else null end),
+            city: (if .timezone | length > 0 then (.timezone | tostring | split("/") | last) else null end),
+            organizations: ([.field_organizations[].id | tostring] | join(",") | split(",")),
+            industries: .field_industries,
+            contributions: .field_contributed,
+            events: .field_events_attended
         }'
         ;;
     organization)
