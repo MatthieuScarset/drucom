@@ -15,10 +15,9 @@ fetch_data() {
     local RESOURCE=$2
     local PARAMETERS=$3
     local MAPPING=$4
-    local OUTPUT_FILE="$OUTPUT_FOLDER/$FILENAME.json"
-    local TEMP_FOLDER="$OUTPUT_FOLDER/temp_$FILENAME"
+    local PAGES_FOLDER="$OUTPUT_FOLDER/pages_$FILENAME"
 
-    mkdir -p "$TEMP_FOLDER"
+    mkdir -p "$PAGES_FOLDER"
 
     # Get the total number of pages from the `.last` parameter
     local LAST_PAGE_URL=$(curl -s "${BASE_URL}/${RESOURCE}?${PARAMETERS}&page=0" | jq -r '.last')
@@ -26,27 +25,12 @@ fetch_data() {
 
     echo "Fetching data for $RESOURCE in parallel..."
     seq 0 $TOTAL_PAGES | parallel -j 100 --halt-on-error now,fail=1 \
-        "curl -s '${BASE_URL}/${RESOURCE}?${PARAMETERS}&page={}' | \
-        jq -c '.list[] | ${MAPPING}' > '$TEMP_FOLDER/page_{}.json' && \
-        echo -ne \"Progress: \$(ls -l $TEMP_FOLDER | wc -l)/$((TOTAL_PAGES + 1)) pages fetched...\r\""
-
-    echo -e "\nFetching complete."
-
-    echo "Merging data..."
-    echo "[" > "$OUTPUT_FILE"
-    find "$TEMP_FOLDER" -type f -name "page_*.json" -exec cat {} + | sed '$!s/$/,/' >> "$OUTPUT_FILE"
-    echo "]" >> "$OUTPUT_FILE"
-
-    # Clean up temporary files
-    rm -rf "$TEMP_FOLDER"
-
-    # Validate JSON
-    if ! jq -e . "$OUTPUT_FILE" > /dev/null 2>&1; then
-        echo "❌ Error: Invalid JSON in $OUTPUT_FILE"
-        exit 1
-    fi
-
-    echo "✅ Data saved in $OUTPUT_FILE"
+        "if [ ! -f '$PAGES_FOLDER/page_{}.json' ]; then \
+            curl -s '${BASE_URL}/${RESOURCE}?${PARAMETERS}&page={}' | \
+            jq -c '.list[] | ${MAPPING}' > '$PAGES_FOLDER/page_{}.json'; \
+        fi; \
+        echo -ne \"Progress: \$(({} + 1))/$((TOTAL_PAGES + 1)) pages processed...\r\""
+    echo "✅ Data saved in $PAGES_FOLDER"
 }
 
 case "$1" in
@@ -79,7 +63,7 @@ case "$1" in
             created: .created,
             changed: .changed,
             author: (.author.id // null),
-            url: (.field_link.url // null),
+            url: (if (.field_link | type == "object") then .field_link.url else null end),            
             budget: (.field_budget // null),
             headquarters: (.field_organization_headquarters // null)
         }'
@@ -105,4 +89,5 @@ case "$1" in
     *)
         echo "Usage: $0 {user|organization|event}"  exit 1
         exit 1
-        ;;esac
+        ;;
+esac
