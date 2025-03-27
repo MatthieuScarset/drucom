@@ -4,7 +4,7 @@ Data Analysis of the Drupal Community (Users & Contributions).
 
 ## Getting started 
 
-Fetch data from the web and merge into one JSON file per entity.
+Fetch data from the web:
 
 ```bash
 # =====================================================
@@ -18,12 +18,6 @@ chmod +x ./script/fetch_drupal_data.sh
 ./script/fetch_drupal_data.sh event
 ./script/fetch_drupal_data.sh organization
 ./script/fetch_drupal_data.sh user
-
-# Merge data.
-chmod +x ./script/merge_drupal_data.sh
-./script/merge_drupal_data.sh event
-./script/merge_drupal_data.sh organization
-./script/merge_drupal_data.sh user
 ```
 
 Install requirements:
