@@ -2,7 +2,7 @@
 
 # Script to fetch and process data from Drupal API
 # Usage: ./fetch_comments_data.sh
-# Dependencies: jq, curl
+# Dependencies: jq, curl, parallel
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_FOLDER="$SCRIPT_DIR/../data/json/batches_comment"
@@ -19,15 +19,20 @@ fetch_comments_data() {
     # Convert total page to integer
     TOTAL_PAGES=$(echo "$TOTAL_PAGES" | sed 's/[^0-9]//g')
 
-    # Break now if total pages is 0.
-    if [ "$TOTAL_PAGES" -le 0 ]; then
+    # Skip if no result.
+    if [ "$TOTAL_PAGES" -eq 0 ]; then
         return
     fi
-    
-    TOTAL_PAGES=$((TOTAL_PAGES - 1))
+
     local FIRST_TIMESTAMP=$(echo "$RESULTS" | jq -r '.list[0].created // "null"')
-    local LAST_RESULTS=$(curl -s "${BASE_URL}/${RESOURCE}?${PARAMETERS}&page=$TOTAL_PAGES")
-    local LAST_TIMESTAMP=$(echo "$LAST_RESULTS" | jq -r '.list[0].created // "null"')
+    local LAST_TIMESTAMP=$FIRST_TIMESTAMP
+
+    # Curl another time only if total page is more than 1
+    if [ "$TOTAL_PAGES" -gt 1 ]; then
+        local LAST_PAGE=$((TOTAL_PAGES -1))
+        local LAST_RESULTS=$(curl -s "${BASE_URL}/${RESOURCE}?${PARAMETERS}&page=${LAST_PAGE}")
+        local LAST_TIMESTAMP=$(echo "$LAST_RESULTS" | jq -r '.list[0].created // "null"')
+    fi
 
     jq -n --arg user "$USER_ID" \
           --argjson count "$TOTAL_PAGES" \
@@ -37,14 +42,7 @@ fetch_comments_data() {
 }
 
 run() {
-    process_user() {
-        local USER_ID=$1
-        echo "Processing user ID: $USER_ID" >&2
-        fetch_comments_data "$USER_ID"
-    }
-
     export -f fetch_comments_data
-    export -f process_user
     export BASE_URL RESOURCE OUTPUT_FOLDER
 
     local USER_IDS_FILE="$SCRIPT_DIR/../data/json/user_uids.json"
@@ -63,10 +61,16 @@ run() {
     for ((i = 0; i < TOTAL_USERS; i += BATCH_SIZE)); do
         local BATCH_USERS=("${USER_IDS[@]:i:BATCH_SIZE}")
         local OUTPUT_FILE="$OUTPUT_FOLDER/batch_${BATCH_NUMBER}.json"
+
         echo "Processing batch $BATCH_NUMBER with ${#BATCH_USERS[@]} users..." >&2
+        echo "================================================================" >&2
+
+        # Process each user in the batch in parallel
         printf "%s\n" "${BATCH_USERS[@]}" | parallel -j 100 --halt-on-error now,fail=1 \
-            "process_user {}" | jq -s 'add' > $OUTPUT_FILE
-        echo "✅ Data saved in $OUTPUT_FILE"
+            "fetch_comments_data {}" | jq -s 'add' > $OUTPUT_FILE
+
+        echo "✅ Data saved to $OUTPUT_FILE"
+
         ((BATCH_NUMBER++))
     done
 }
