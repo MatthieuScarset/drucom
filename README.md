@@ -18,19 +18,20 @@ chmod +x ./script/fetch_drupal_data.sh
 ./script/fetch_drupal_data.sh event
 ./script/fetch_drupal_data.sh organization
 ./script/fetch_drupal_data.sh user
-```
+./script/fetch_drupal_data.sh module
+./script/fetch_drupal_data.sh module_terms
 
-Install requirements:
-
-```bash
+# Install requirements:
 pip install -r requirements.txt
-```
 
-Open the notebooks:
+# Run the installation notebook.
+cd notebook/ && jupyter notebook installation.ipynb
 
-```bash
-cd notebook/
-jupyter notebook
+# It should have created a `user_uids.json` file.
+
+# Fetch additional data.
+chmod +x ./script/fetch_comments_data.sh
+./script/fetch_comments_data.sh
 ```
 
 ## Resources
