@@ -33,61 +33,91 @@ fetch_data() {
     echo "✅ Data saved in $PAGES_FOLDER"
 }
 
+# Define mappings for each type
+user_mapping='{
+    id: .uid,
+    title: .name,
+    fname: (.field_first_name // null),
+    lname: (.field_last_name // null),
+    created: .created,
+    da_membership: (.field_da_ind_membership // null),
+    slack: (.field_slack // null),
+    mentors: (if (.field_mentors | type == "array") then .field_mentors | map(.id | tostring) else [] end),
+    countries: (.field_country // null),
+    language: (.field_user_primary_language // null),
+    languages: (.field_languages // []),
+    timezone: (.timezone // null),
+    region: (if .timezone | length > 0 then (.timezone | tostring | split("/") | first) else null end),
+    city: (if .timezone | length > 0 then (.timezone | tostring | split("/") | last) else null end),
+    organizations: (if (.field_organizations | type == "array") then .field_organizations | map(.id | tostring) else [] end),
+    industries: (.field_industries // null),
+    contributions: (.field_contributed // null),
+    events: (.field_events_attended // null)
+}'
+
+organization_mapping='{
+    id: .nid,
+    title: .title,
+    created: .created,
+    changed: .changed,
+    author: (.author.id // null),
+    url: (if (.field_link | type == "object") then .field_link.url else null end),
+    budget: (.field_budget // null),
+    headquarters: (.field_organization_headquarters // null)
+}'
+
+module_mapping='{
+    id: .nid,
+    title: .title,
+    created: .created,
+    changed: .changed,
+    slug: .field_project_machine_name,
+    security_status: .field_security_advisory_coverage,
+    maintenance_status: (if (.taxonomy_vocabulary_44 | type == "object") then .taxonomy_vocabulary_44.id else null end),
+    development_status: (if (.taxonomy_vocabulary_46 | type == "object") then .taxonomy_vocabulary_46.id else null end),
+    categories: (if (.taxonomy_vocabulary_3 | type == "array") then .taxonomy_vocabulary_3 | map(.id | tostring) else [] end)
+}'
+
+event_mapping='{
+    id: .nid,
+    title: .title,
+    from: (.field_date_of_event.value // null),
+    to: (.field_date_of_event.value2 // null),
+    duration: (.field_date_of_event.duration // null),
+    event_type: (.field_event_type // [] | join("")),
+    event_format: (.field_event_format // [] | join("")),
+    author: (.author.id // null),
+    speakers: (if (.field_event_speakers | type == "array") then .field_event_speakers | map(.id | tostring) else [] end),
+    sponsors: (if (.field_event_sponsors | type == "array") then .field_event_sponsors | map(.id | tostring) else [] end),
+    volunteers: (if (.field_event_volunteers | type == "array") then .field_event_volunteers | map(.id | tostring) else [] end),
+    organizers: (if (.field_organizers | type == "array") then .field_organizers | map(.id | tostring) else [] end),
+    city: (if (.field_event_address | type == "object") then .field_event_address.locality else null end),
+    country: (if (.field_event_address | type == "object") then .field_event_address.country else null end)
+}'
+
+taxonomy_terms_mapping='{
+    id: .tid,
+    name: .name
+}'
+
 case "$1" in
     user)
-        fetch_data "user" "user.json" "sort=uid&direction=ASC" '{
-            id: .uid,
-            title: .name,
-            fname: (.field_first_name // null),
-            lname: (.field_last_name // null),
-            created: .created,
-            da_membership: (.field_da_ind_membership // null),
-            slack: (.field_slack // null),
-            mentors: ([.field_mentors[]?.id | tostring] // [] | join(",") | split(",")),
-            countries: (.field_country // null),
-            language: (.field_user_primary_language // null),
-            languages: (.field_languages // []),
-            timezone: (.timezone // null),
-            region: (if .timezone | length > 0 then (.timezone | tostring | split("/") | first) else null end),
-            city: (if .timezone | length > 0 then (.timezone | tostring | split("/") | last) else null end),
-            organizations: ([.field_organizations[]?.id | tostring] // [] | join(",") | split(",")),
-            industries: (.field_industries // null),
-            contributions: (.field_contributed // null),
-            events: (.field_events_attended // null)
-        }'
+        fetch_data "user" "user.json" "sort=uid&direction=ASC"  "$user_mapping"
         ;;
     organization)
-        fetch_data "organization" "node.json" "type=organization&sort=nid&direction=ASC" '{
-            id: .nid,
-            title: .title,
-            created: .created,
-            changed: .changed,
-            author: (.author.id // null),
-            url: (if (.field_link | type == "object") then .field_link.url else null end),            
-            budget: (.field_budget // null),
-            headquarters: (.field_organization_headquarters // null)
-        }'
+        fetch_data "organization" "node.json" "type=organization&sort=nid&direction=ASC" "$organization_mapping"
+        ;;
+    module)
+        fetch_data "module" "node.json" "type=project_module&sort=nid&direction=ASC" "$module_mapping"
+        ;;
+    module_terms)
+        fetch_data "module_terms" "taxonomy_term.json" "vocabulary[]=3&vocabulary[]=44&vocabulary[]=46&sort=tid&direction=ASC" "$taxonomy_terms_mapping"
         ;;
     event)
-        fetch_data "event" "node.json" "type=event&sort=nid&direction=ASC" '{
-            id: .nid,
-            title: .title,
-            from: (.field_date_of_event.value // null),
-            to: (.field_date_of_event.value2 // null),
-            duration: (.field_date_of_event.duration // null),
-            event_type: (.field_event_type // [] | join("")),
-            event_format: (.field_event_format // [] | join("")),
-            author: (.author.id // null),
-            speakers: (.field_event_speakers // [] | map(.id | tostring)),
-            sponsors: (.field_event_sponsors // [] | map(.id | tostring)),
-            volunteers: (.field_event_volunteers // [] | map(.id | tostring)),
-            organizers: (.field_organizers // [] | map(.id | tostring)),
-            city: (if (.field_event_address | type == "object") then .field_event_address.locality else null end),
-            country: (if (.field_event_address | type == "object") then .field_event_address.country else null end)
-        }'
+        fetch_data "event" "node.json" "type=event&sort=nid&direction=ASC" "$event_mapping"
         ;;
     *)
-        echo "Usage: $0 {user|organization|event}"  exit 1
+        echo "Usage: $0 {user|organization|event|module|module_terms}"
         exit 1
         ;;
 esac
