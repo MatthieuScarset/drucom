@@ -15,7 +15,7 @@ fetch_data() {
     local RESOURCE=$2
     local PARAMETERS=$3
     local MAPPING=$4
-    local PAGES_FOLDER="$OUTPUT_FOLDER/pages_$FILENAME"
+    local PAGES_FOLDER="$OUTPUT_FOLDER/$FILENAME"
 
     mkdir -p "$PAGES_FOLDER"
 
@@ -71,7 +71,9 @@ module_mapping='{
     title: .title,
     created: .created,
     changed: .changed,
+    author: (.author.id // null),
     slug: .field_project_machine_name,
+    stars: (.flag_project_star_user // [] | length // 0),
     security_status: .field_security_advisory_coverage,
     maintenance_status: (if (.taxonomy_vocabulary_44 | type == "object") then .taxonomy_vocabulary_44.id else null end),
     development_status: (if (.taxonomy_vocabulary_46 | type == "object") then .taxonomy_vocabulary_46.id else null end),
@@ -100,6 +102,16 @@ taxonomy_terms_mapping='{
     name: .name
 }'
 
+theme_mapping='{
+    id: .nid,
+    title: .title,
+    created: .created,
+    changed: .changed,
+    author: (.author.id // null),
+    slug: .field_project_machine_name,
+    stars: (.flag_project_star_user // [] | length // 0),
+}'
+
 case "$1" in
     user)
         fetch_data "user" "user.json" "sort=uid&direction=ASC"  "$user_mapping"
@@ -115,6 +127,9 @@ case "$1" in
         ;;
     event)
         fetch_data "event" "node.json" "type=event&sort=nid&direction=ASC" "$event_mapping"
+        ;;
+    theme)
+        fetch_data "theme" "node.json" "type=project_theme&sort=nid&direction=ASC" "$theme_mapping"
         ;;
     *)
         echo "Usage: $0 {user|organization|event|module|module_terms}"
