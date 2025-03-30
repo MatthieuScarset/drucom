@@ -1,11 +1,13 @@
 import os
-import jq
 import json
-from argparse import ArgumentParser
+import asyncio
+import aiohttp
 import requests
+from aiofiles import open as aio_open
+from argparse import ArgumentParser
+import jq
 
 BASE_URL = "https://www.drupal.org/api-d7"
-
 HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
@@ -14,7 +16,15 @@ HEADERS = {
 
 
 def get_mapping(name):
-    """Get the mapping for a specific dataset."""
+    """
+    Get the mapping for a specific dataset.
+    The mapping is used to transform the data from the Drupal API into a desired format.
+    The values in the mapping are jq filters that specify how to extract and transform the data.
+    Args:
+        name (str): The name of the dataset.
+    Returns:
+        dict: The mapping for the dataset.
+    """
 
     # Define mappings for each type
     user_mapping = {
@@ -25,14 +35,14 @@ def get_mapping(name):
         "created": ".created",
         "da_membership": "(.field_da_ind_membership // null)",
         "slack": "(.field_slack // null)",
-        "mentors": "(if (.field_mentors | type == 'array') then .field_mentors | map(.id | tostring) else [] end)",
+        "mentors": "(if (.field_mentors | type == \"array\") then .field_mentors | map(.id | tostring) else [] end)",
         "countries": "(.field_country // null)",
         "language": "(.field_user_primary_language // null)",
         "languages": "(.field_languages // [])",
         "timezone": "(.timezone // null)",
-        "region": "(if .timezone | length > 0 then (.timezone | tostring | split('/') | first) else null end)",
-        "city": "(if .timezone | length > 0 then (.timezone | tostring | split('/') | last) else null end)",
-        "organizations": "(if (.field_organizations | type == 'array') then .field_organizations | map(.id | tostring) else [] end)",
+        "region": "(if .timezone | length > 0 then (.timezone | tostring | split(\"/\") | first) else null end)",
+        "city": "(if .timezone | length > 0 then (.timezone | tostring | split(\"/\") | last) else null end)",
+        "organizations": "(if (.field_organizations | type == \"array\") then .field_organizations | map(.id | tostring) else [] end)",
         "industries": "(.field_industries // null)",
         "contributions": "(.field_contributed // null)",
         "events": "(.field_events_attended // null)"
@@ -44,7 +54,7 @@ def get_mapping(name):
         "created": ".created",
         "changed": ".changed",
         "author": "(.author.id // null)",
-        "url": "(if (.field_link | type == 'object') then .field_link.url else null end)",
+        "url": "(if (.field_link | type == \"object\") then .field_link.url else null end)",
         "budget": "(.field_budget // null)",
         "headquarters": "(.field_organization_headquarters // null)"
     }
@@ -58,9 +68,9 @@ def get_mapping(name):
         "slug": ".field_project_machine_name",
         "stars": "(.flag_project_star_user // [] | length // 0)",
         "security_status": ".field_security_advisory_coverage",
-        "maintenance_status": "(if (.taxonomy_vocabulary_44 | type == 'object') then .taxonomy_vocabulary_44.id else null end)",
-        "development_status": "(if (.taxonomy_vocabulary_46 | type == 'object') then .taxonomy_vocabulary_46.id else null end)",
-        "categories": "(if (.taxonomy_vocabulary_3 | type == 'array') then .taxonomy_vocabulary_3 | map(.id | tostring) else [] end)"
+        "maintenance_status": "(if (.taxonomy_vocabulary_44 | type == \"object\") then .taxonomy_vocabulary_44.id else null end)",
+        "development_status": "(if (.taxonomy_vocabulary_46 | type == \"object\") then .taxonomy_vocabulary_46.id else null end)",
+        "categories": "(if (.taxonomy_vocabulary_3 | type == \"array\") then .taxonomy_vocabulary_3 | map(.id | tostring) else [] end)"
     }
 
     event_mapping = {
@@ -137,49 +147,44 @@ def get_total_pages(url, params):
         return 0
 
 
-def fetch_pages(output_folder, total_pages, url, params, mapping):
-    """
-    Fetch data from the Drupal API and save it to a file.
-    Args:
-        output_folder (str): The folder to save the data.
-        url (str): The URL to request.
-        params (dict): The parameters to include in the request.
-        total_pages (int): The total number of pages to fetch.
-        mapping (dict): The jq mapping to transform the data.
-    """
-    jq_filter_string = '{' + \
-        ', '.join([f'"{key}": {value}' for key,
-                  value in mapping.items()]) + '}'
-    jq_filter = jq.compile(jq_filter_string)
+async def fetch_page(session, url, params, page, mapping, output_folder):
+    """Fetch a single page asynchronously and save the transformed data."""
+    params['page'] = page
+    try:
+        async with session.get(url, params=params) as response:
+            data = await response.json()
+            jq_filter_string = '{' + ', '.join([f'"{key}": {value}' for key, value in mapping.items()]) + '}'
+            jq_filter = jq.compile(jq_filter_string)
+            transformed_data = [jq_filter.transform(item) for item in data.get('list', [])]
 
-    for page in range(total_pages):
-        print(f"Fetching page {page} of {total_pages}")
-        params['page'] = page
-        response = requests.get(url, headers=HEADERS, params=params)
-        data = response.json()
-
-        # Transform the data using the jq filter
-        transformed_data = [jq_filter.transform(
-            item) for item in data.get('list', [])]
-
-        # Save the transformed data to a file
-        output_file = os.path.join(output_folder, f"page_{page}.json")
-        try:
-            with open(output_file, 'w') as f:
-                json.dump(transformed_data, f, indent=None,
-                          separators=(',', ':'))
+            # Save the transformed data to a file
+            output_file = os.path.join(output_folder, f"page_{page}.json")
+            async with aio_open(output_file, 'w') as f:
+                await f.write(json.dumps(transformed_data, separators=(',', ':')))
             print(f"Saved page {page + 1} to {output_file}")
-        except Exception as e:
-            print(f"Error saving file {output_file}: {e}")
+    except Exception as e:
+        print(f"Error fetching page {page}: {e}")
+
+
+async def fetch_all_pages(url, params, total_pages, mapping, output_folder, max_concurrent_requests=100):
+    """Fetch all pages asynchronously with a limit on concurrent requests."""
+    os.makedirs(output_folder, exist_ok=True)
+    connector = aiohttp.TCPConnector(limit=max_concurrent_requests)
+    async with aiohttp.ClientSession(headers=HEADERS, connector=connector) as session:
+        tasks = [
+            fetch_page(session, url, params, page, mapping, output_folder)
+            for page in range(total_pages)
+        ]
+        await asyncio.gather(*tasks)
 
 
 def process(output_folder, url, params, mapping):
     """
-    Process the data from the Drupal API and save it to a file.
+    Process the data asynchronously.
     """
     total_pages = get_total_pages(url, params)
     if total_pages >= 0:
-        fetch_pages(output_folder, total_pages, url, params, mapping)
+        asyncio.run(fetch_all_pages(url, params, total_pages, mapping, output_folder))
     return total_pages
 
 
