@@ -76,3 +76,6 @@ figures/
 # Ignore system files
 Thumbs.db
 .DS_Store
+
+# Python egg-info directories
+*.egg-info/

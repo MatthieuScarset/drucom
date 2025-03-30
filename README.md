@@ -7,31 +7,11 @@ Data Analysis of the Drupal Community (Users & Contributions).
 Fetch data from the web:
 
 ```bash
-# =====================================================
-# Delete existing data if you want to fetch fresh data.
-# rm -rf ../data/json/pages_*
-# =====================================================
-
-# Fetch data.
-# /!\ Warning: this is a very long running script!
-chmod +x ./script/fetch_drupal_data.sh
-./script/fetch_drupal_data.sh event
-./script/fetch_drupal_data.sh organization
-./script/fetch_drupal_data.sh user
-./script/fetch_drupal_data.sh module
-./script/fetch_drupal_data.sh module_terms
-
 # Install requirements:
 pip install -r requirements.txt
 
-# Run the installation notebook.
+# Run the installation notebook and follow the steps.
 cd notebook/ && jupyter notebook installation.ipynb
-
-# It should have created a `user_uids.json` file.
-
-# Fetch additional data.
-chmod +x ./script/fetch_comments_data.sh
-./script/fetch_comments_data.sh
 ```
 
 ## Resources
