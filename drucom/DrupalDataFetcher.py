@@ -4,7 +4,6 @@ import asyncio
 import aiohttp
 import requests
 from aiofiles import open as aio_open
-from argparse import ArgumentParser
 import jq
 
 
@@ -257,28 +256,13 @@ class DrupalDataFetcher:
         print(
             f"Processed {total_pages + 1} pages of data for {self.dataset_name}")
 
-
-def main():
-    """
-    Main function to fetch data from Drupal API.
-    Requires the dataset name as an argument.    
-    """
-    parser = ArgumentParser(description="Fetch data from Drupal API")
-    parser.add_argument(
-        '--name', type=str, default="", help="Name of the dataset to retrieve from d.o"
-    )
-    args = parser.parse_args()
-    dataset_name = args.name
-    if not dataset_name:
-        print('missing argument --name')
-        return
-
-    try:
-        fetcher = DrupalDataFetcher(dataset_name)
-        fetcher.run()
-    except ValueError as e:
-        print(e)
-
-
-if __name__ == "__main__":
-    main()
+    def main(dataset_name: str):
+        """
+        Main function to fetch data from Drupal API.
+        Requires the dataset name as an argument.    
+        """
+        try:
+            fetcher = DrupalDataFetcher(dataset_name)
+            fetcher.run()
+        except ValueError as e:
+            print(e)

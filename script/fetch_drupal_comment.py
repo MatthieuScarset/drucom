@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+import orjson  # Use orjson for faster JSON serialization
 import json
 import os
 import re
@@ -76,7 +77,7 @@ async def fetch_comments_by_user_async(session, uid, semaphore):
             return None
 
 
-async def fetch_all_comments(uids, batch_size=10000):
+async def fetch_all_comments(uids, batch_size=1000):
     """
     Fetch comments for all users asynchronously in batches.
 
@@ -92,8 +93,12 @@ async def fetch_all_comments(uids, batch_size=10000):
     list
         A list of dictionaries containing comments data for each user.
     """
-    semaphore = asyncio.Semaphore(1000)  # Limit to 1000 concurrent requests
-    all_results = []
+    semaphore = asyncio.Semaphore(5000)  # Increase concurrency limit to 5000
+    comments_file = os.path.join(SCRIPT_DIR, '../data/json/comments.json')
+
+    # Initialize the file with an opening bracket
+    with open(comments_file, 'wb') as f:
+        f.write(b'[\n')
 
     async with aiohttp.ClientSession() as session:
         for i in range(0, len(uids), batch_size):
@@ -101,9 +106,19 @@ async def fetch_all_comments(uids, batch_size=10000):
             print(f"Processing batch {i // batch_size + 1} with {len(batch)} users...", flush=True)
             tasks = [fetch_comments_by_user_async(session, uid, semaphore) for uid in batch]
             results = await asyncio.gather(*tasks)
-            all_results.extend(results)
+            results = list(filter(None, results))  # Filter out None results
 
-    return all_results
+            # Append results to the file
+            with open(comments_file, 'ab') as f:
+                f.write(b',\n'.join(orjson.dumps(result) for result in results))
+                if i + batch_size < len(uids):  # Add a comma if more batches are remaining
+                    f.write(b',\n')
+
+    # Close the JSON array in the file
+    with open(comments_file, 'ab') as f:
+        f.write(b'\n]')
+
+    return []  # Return an empty list since results are written to the file
 
 
 def main():
@@ -119,24 +134,19 @@ def main():
             uids = json.load(f)
 
     # Limit the number of UIDs for testing
-    #uids = uids[:20000]
+    uids = uids[:20000]
 
     print(f"Fetching comments for {len(uids)} users asynchronously...", flush=True)
 
     # Fetch comments asynchronously in batches
-    comments = asyncio.run(fetch_all_comments(uids))
-
-    # Convert to DataFrame
-    users = pd.DataFrame(comments)
-
-    # Drop rows with total = 0
-    users = users[users['total'] > 0]
+    asyncio.run(fetch_all_comments(uids))
 
     # Save to Parquet
+    comments = pd.read_json(os.path.join(SCRIPT_DIR, '../data/json/comments.json'))
+    comments.to_parquet(os.path.join(SCRIPT_DIR, '../data/comments.parquet'), index=False)
     output_file = os.path.join(SCRIPT_DIR, '../data/comments.parquet')
-    users.to_parquet(output_file, index=False)
     print(f"Comments data saved to {output_file}", flush=True)
-    print(users.head(), flush=True)
+    print(comments.head(), flush=True)
 
 
 if __name__ == "__main__":
