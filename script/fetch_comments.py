@@ -1,4 +1,5 @@
 import re
+import sys
 import json
 import pandas as pd
 import asyncio
@@ -54,7 +55,7 @@ def chunked_iterable(iterable, size):
         yield chunk
 
 
-async def transform_and_save_results(results, output_folder, page):
+async def transform_and_save_results(results, output_folder, page, file_semaphore):
     """
     Transform results into the desired format and save them to a JSON file.
     """
@@ -64,34 +65,9 @@ async def transform_and_save_results(results, output_folder, page):
 
     os.makedirs(output_folder, exist_ok=True)
     output_file = os.path.join(output_folder, f"page_{page}.json")
-    async with aiofiles.open(output_file, 'w') as f:
-        await f.write(json.dumps(transformed_data, separators=(',', ':')))
-
-
-async def process_all_chunks_async(uids, chunk_size, output_folder):
-    """
-    Process all UIDs in chunks asynchronously and save results.
-    """
-    connector = aiohttp.TCPConnector(limit=1000)  # Increase connection pool size
-    semaphore = asyncio.Semaphore(10)  # Limit concurrent batches to 10
-    async with aiohttp.ClientSession(connector=connector) as session:
-        chunks_total = sum(1 for _ in chunked_iterable(uids, chunk_size))
-        tasks = []
-        for page, chunk in enumerate(chunked_iterable(uids, chunk_size), start=1):
-            tasks.append(process_and_save_chunk_with_semaphore(session, chunk, output_folder, page, chunks_total, semaphore))
-        await asyncio.gather(*tasks)
-
-
-async def process_and_save_chunk_with_semaphore(session, chunk, output_folder, page, chunks_total, semaphore):
-    """
-    Process a single chunk with semaphore control and save results to a file.
-    """
-    async with semaphore:  # Limit the number of concurrent batches
-        start_time = time.time()
-        results = await process_chunk_async(session, chunk)
-        await transform_and_save_results(results, output_folder, page)
-        end_time = time.time()
-        print(f"Processed chunk {page} / {chunks_total} in {end_time - start_time:.2f} seconds")
+    async with file_semaphore:  # Limit concurrent file writes
+        async with aiofiles.open(output_file, 'w') as f:
+            await f.write(json.dumps(transformed_data, separators=(',', ':')))
 
 
 async def process_chunk_async(session, chunk):
@@ -102,12 +78,31 @@ async def process_chunk_async(session, chunk):
     return await asyncio.gather(*tasks, return_exceptions=False)
 
 
+async def process_all_chunks_sequentially(uids, chunk_size, output_folder, start_page=1):
+    """
+    Process all UIDs in chunks sequentially with controlled concurrency.
+    """
+    connector = aiohttp.TCPConnector(limit=1000)  # Increase connection pool size
+    file_semaphore = asyncio.Semaphore(50)  # Limit concurrent file writes to 50
+    async with aiohttp.ClientSession(connector=connector) as session:
+        chunks_total = sum(1 for _ in chunked_iterable(uids, chunk_size))
+        for page, chunk in enumerate(chunked_iterable(uids, chunk_size), start=1):
+            if page < start_page:
+                continue  # Skip already processed pages
+            start_time = time.time()
+            results = await process_chunk_async(session, chunk)
+            await transform_and_save_results(results, output_folder, page, file_semaphore)
+            end_time = time.time()
+            print(f"Processed chunk {page} / {chunks_total} in {end_time - start_time:.2f} seconds")
+
+
 # Main processing.
 uids = json.load(open('data/json/uids.json', 'r'))
 output_folder = 'output'
 os.makedirs(output_folder, exist_ok=True)
 
 chunk_size = 1000
+start_page = int(sys.argv[1])  # Restart from page N
 
 # Feature flag for testing.
 TEST_MODE = False
@@ -117,6 +112,6 @@ if TEST_MODE:
     uids = uids[i_start:i_stop]
 
 start_time = time.time()
-asyncio.run(process_all_chunks_async(uids, chunk_size, output_folder))
+asyncio.run(process_all_chunks_sequentially(uids, chunk_size, output_folder, start_page=start_page))
 end_time = time.time()
 print(f"Processed all chunks in {end_time - start_time:.2f} seconds")
